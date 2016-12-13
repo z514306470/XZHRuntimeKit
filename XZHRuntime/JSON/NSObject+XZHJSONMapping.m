@@ -30,178 +30,36 @@ typedef NS_ENUM(NSInteger, XZHPropertyMappedToJsonKeyType) {
 
 @class XZHPropertyMapper;
 
-/**
- *  将一个json，如何解析成一个model
- */
+
 typedef struct XZHJsonToModelContext {
-    void *model;            // 实体类的一个对象
-    void *classMapper;      // 实体类的ClassMapper
-    void *jsonDic;          // 要解析的jsonDic
+    void *model;
+    void *classMapper;
+    void *jsonDic;
 }XZHJsonToModelContext;
 
-/**
- *  将一个model，如何转成一个json
- */
 typedef struct XZHModelToJsonContext {
-    void *model;            // 从哪一个对象转成json对象
-    void *jsonDic;          // 最终转换成的json对象
+    void *model;
+    void *jsonDic;
 }XZHModelToJsonContext;
 
-/**
- *  日期字符串格式化
- */
 static xzh_force_inline NSDateFormatter* XZHDateFormatter(__unsafe_unretained NSString *dateFormat);
 
-/**
- *  json字符串转换成NSDictioanry
- */
 static xzh_force_inline NSDictionary* XZHJSONStringToDic(__unsafe_unretained NSString *jsonString);
 
-/**
- *  NSString/NSNumber/NSNull >>> NSNumber
- */
 static xzh_force_inline NSNumber* XZHNumberWithValue(__unsafe_unretained id value);
 
-/**
- *  将Objective-C实体类对象的属性值转换成NSNumber
- */
 static xzh_force_inline NSNumber* XZHGetNSNumberFromProperty(__unsafe_unretained id object, __unsafe_unretained XZHPropertyMapper *mapper);
 
-/**
- *  将id value根据property mapper记录的jsonkey，设置给property mapper保存的objc_property属性变量
- *  - 只接收Foundation类型对象
- *  - Class、Method、SEL、等CoreFoundation实例、c指针变量 >>>> 使用NSValue预先包装好
- *
- *  @param jsonItemValue        对应的jsonValue，只接受三种Foundation类型值: 1)NSObject 2)NSNumber 3)NSValue
- *  @param object               实体类对象
- *  @param propertyMapper       PropertyMapper对象，属性与jsonkey的映射关系
- *
- *  该函数大体的逻辑为如下:
- *  - (1) 外层: 首先根据属性PropertyMapper->Ivar的类型进行分类
- *  - (2) 内层: 再根据传入的json item value的类型进行分类
- *
- *  if ((mapper->_typeEncoding & XZHTypeEncodingDataTypeMask) == XZHTypeEncodingFoundationObject){
-         //>>>>>>>>>>>> 优先 Foundation Object 的条件case，大部分情况都是使用Foundation对象
-         - NSURL
-         - NSArray/NSMutableArray
-         - NSSet/NSMutableSet
-         - NSDictionary/NSMutableDictionary
-         - NSDate
-         - NSData/NSMutableData
-         - NSNumber/NSDecimalNumber
-         - NSString/NSMutableString
-         - NSValue
-         - NSNull
-         - NSBlock
-         - 自定义继承自NSObject类
-    } else if (mapper->_isCNumber) {
-         //>>>>>>>>>>>> int、float、double、long 
-         //>>>>>>>>>>>> 这些基本数值类型，需要预先使用 `NSNumber` 进行打包，然后传入进行设值
-         - BOOL
-         - char/int8_t
-         - unsigned char/uint8_t
-         - int/int32_t
-         - unsigned int/uint32_t
-         - float
-         - double
-         - short/int16_t
-         - unsigned short/uint16_t
-         - long
-         - unsigned long
-         - long long/int64_t
-         - unsigned long long/uint64_t
-     } else {
-         // c 指针类型/CoreFoundation实例，数值需要预先使用 `NSValue` 进行打包，然后传入进行设值
-         - int *p，char *s，int arr[5],
-         - Class、Method、Property、SEL ... 等CoreFoundation结构体实例
-         - 自定义c结构体实例、结构体数组 ....
-     }
- */
 static void XZHSetFoundationObjectToProperty(__unsafe_unretained id jsonItemValue, __unsafe_unretained id model, __unsafe_unretained XZHPropertyMapper *propertyMapper);
 
-/**
- *  遍历json字典，解析json
- *  - (1) json.key、json.value都是已知，PropertyMapper未知 >>> 寻找PropertyMapper
- *  - (2) 只需要找到jsonkey如何映射属性记录的PropertyMapper
- *  - (3) 从ClassMapper->_jsonKeyPropertyMapperDic中获取到PropertyMapper
- *  - (4) 将json.value根据PropertyMapper记录的Ivar类型，设置给model对象
- *
- *  @param key           dictionary.key
- *  @param value         dictionary.value
- *  @param context       XZHModelContext
- */
 static void XZHJsonToModelDicApplierFunction(const void *jsonKey, const void *jsonItemValue, void *context);
 
-/**
- *  遍历XZHClassMapper->PropertyMappers，解析json
- *  - (1) json.key、json.value都是未知，PropertyMapper已知 >>> 寻找json.key、json.value
- *  - (2) 拿到当前被遍历的ProperyMapper
- *  - (3) 判断ProperyMapper映射的jsonkey的类型:
- *      - (3.1) simple key
- *      - (3.2) keyPath
- *      - (3.3) keyArray
- *  - (4) jsonvalue = [jsonDic objectForKey/objectForKeyPath/objectForKeyArray]; 获取到json item value
- *  - (5) 将json.value根据PropertyMapper记录的Ivar类型，设置给model对象
- *
- *  @param value        XZHPeropertyMapper
- *  @param context      XZHModelContext
- */
 static void XZHJsonToModelArrayApplierFunction(const void *value, void *context);
 
-/**
- *  将传入的Foundation对象进行检测，修正为可以json化的Foundation类型:
- *  - (1) 如果可以，直接返回这个Foundation对象
- *  - (2) 如果不可以，进行类型的重新组装修正为可以json化的Foundation对象类型
- *
- *  Apple在开发文档中规定对 objc对象 ====> json时，对objc对象需要满足的要求如下:
- *  (https://developer.apple.com/reference/foundation/jsonserialization)
- *  - (1) The top level object is an NSArray or NSDictionary.
- *  - (2) All objects are instances of NSString, NSNumber, NSArray, NSDictionary, NSNull.
- *  - (3) All dictionary keys are instances of NSString.
- *  - (4) Numbers are not NaN or infinity.
- *
- *  从上面Apple给出的注释，可以得到 >>> 最终转换成的`顶层`对象类型，只能是如下两种:
- *  - (1) NSArray
- *  - (2) NSDictionary
- *
- *  从上面Apple给出的注释，可以得到 >>> 对于Dic/Array中的Item对象类型，只能是如下类型:
- *  - (1) NSString
- *  - (2) NSNumber
- *  - (3) NSArray
- *  - (4) NSDictionary
- *  - (5) NSNull（虽然这个Apple也是允许的，但是觉得没必要存在，所以直接过滤掉）
- *
- *  线程安全:
- *  - On iOS 7 and later and macOS 10.9 and laterNSJSONSerialization is thread safe.
- */
 static id XZHConvertModelToAbleJSONSerialization(id object);
 
 static void XZHConvertModelToJSONApplierFunction(const void *mappedToKey, const void *propertyMapper, void *context);
 
-/**
- *  负责记录XZHPropertyModel属性与jsonkey之间如何映射的:
- *      - (1) XZHPropertyModel >>>> objc_property_t
- *      - (2) jsonKey >>>> 1)simple 2)keyPath 3)keyArray
- *
- *  PropertyMapper主要完成的事情:
- *
- *      - (1) 记录property映射哪一种类型的json key
- *          - 简单的单个key
- *              - {name : name}
- *              - {name : user_name}
- *          - 带有 `.` 的路径key
- *              - {name : user.name}
- *          - 同时映射多个key，且子key可以是单个key，也可以是路径key
- *              - {name : [name1, name2, name3, user.name]}
- *
- *      - (2) 记录property如何映射json key
- *          - 1 json key : 1 property
- *          - 1 json key : n property
- *          - n json key : 1 property
- *              - {name1 : name}, {name2 : name}, {name3 : name}
- *              - 这种情况是单链表的结构将所有映射同一个jsonkey的PropertyMapper对象全部串联起来
- *          - n json key : n property （这种不应该不存在的错误情况）
- */
 @interface XZHPropertyMapper : NSObject {
     @package
     
@@ -227,53 +85,17 @@ static void XZHConvertModelToJSONApplierFunction(const void *mappedToKey, const 
     
     XZHPropertyMappedToJsonKeyType _mappedType;
     
-    /**
-     *  属性映射简单的json key
-        @{ @"user":@"user" }
-     */
     NSString                    *_mappedToSimpleKey;
     
-    /**
-        属性映射一个 json key path 路径
-        {@"name":@"user.name"}
-     */
     NSString                     *_mappedToKeyPath;
     
-    /**
-     *  一个属性 映射 多个json key
-         @{
-             //属性名 : json key
-             @"id":@"userId",
-             @"id":@"User.id",
-             @"id":@"UID",
-         }
-     */
     NSArray                     *_mappedToKeyArray;
     
-    /**
-     *  多个实体类属性 映射 同一个json key
-         @{
-             //属性名 : json key
-             @"id"       :@"uid",
-             @"userId"   :@"uid",
-             @"ID"       :@"uid",
-         }
-         
-         - (1) id->userId->ID 链起来
-         - (2) [XZHClassMapper->_jsonKeyPropertyMapperDic setObject:ProeprtyMapper forKey:jsonKey];
-     */
     XZHPropertyMapper         *_next;
 }
 @end
 @implementation XZHPropertyMapper
 
-/**
- *  创建描述Property与jsonKey之间映射规则的PropertyMapper对象:
- *
- *  @param property         objc_property对应的 XZHPropertyModel对象
- *  @param containerCls     objc_property如果是Array/Dic/Set容器类型时，内部子对象的containerCls
- *  @param generacCls       objc_property所属NSObject类的generacCls
- */
 - (instancetype)initWithPropertyModel:(XZHPropertyModel *)property containerCls:(Class)containerCls generacCls:(Class)generacCls{
     if (self = [super init]) {
         _property = property;
@@ -297,40 +119,10 @@ static void XZHConvertModelToJSONApplierFunction(const void *mappedToKey, const 
     @package
     __unsafe_unretained XZHClassModel                      *_classModel;
     
-    /**
-     *  1、记录所有的属性与jsonkey的映射存储
-     *  @{
-     *      jsonkey : PropertyMapper对象，
-     *  }
-     *
-     *  2. 大致有如下这些映射关系:
-     *  {name : name}
-     *  {name : user_name}
-     *  {name : user.name}
-     *  {name1 : name}, {name2 : name}, {name3 : name}
-     *  {name : [name1, name2, name3, user.name]}
-     *
-     *  2. 映射关系为<n属性:1jsonkey>时:
-     *      - 只保存最后一次解析的PropertyMapper对象
-     *      - 使用_next属性依次将映射相同jsonkey的PropertyMapper对象串联起来
-     *      - PropertyMapper1->PropertyMapper2->PropertyMapper3->nil
-     */
     CFMutableDictionaryRef              _jsonKeyPropertyMapperDic;
     
-    /**
-     *  保存如果属性变量是NSArray/NSDictionary/NSSet等容器类型时，其内部子对象的class
-     *  @{
-     *      jsonkey : objc_class,
-     *  }
-     */
     CFMutableDictionaryRef              _objectInArrayClassDic;
     
-    /**
-     *  记录属性可能映射的jsonkey的类型:
-     *  - (1) simple json key
-     *  - (2) json keyPath
-     *  - (3) json keyArray
-     */
     CFMutableArrayRef                  _allPropertyMappers;
     CFMutableArrayRef                  _keyPathPropertyMappers;
     CFMutableArrayRef                  _keyArrayPropertyMappers;
@@ -352,23 +144,6 @@ static void XZHConvertModelToJSONApplierFunction(const void *mappedToKey, const 
     CFRelease(_keyArrayPropertyMappers);
 }
 
-/**
- *  解析当前NSObject类的objc_class实例
- *  - (1) 给所有的objc_property实例生成对应的ProeprtyMapper对象
- *  - (2) 设置objc_property实例配置的映射json key类型到ProeprtyMapper对象
- *
- *  ClassMapper 的结构:
- *      - ClassModel
- *          - Ivar List Model
- *          - Property List Model
- *          - Method List Model
- *      - jsonMappingDic
- *          @{
- *              json key 1 : PropertyMapper 1,
- *              json key 2 : PropertyMapper 2,
- *          }
- *
- */
 + (instancetype)classMapperWithClass:(Class)cls {
     if (Nil == cls) return nil;
     static CFMutableDictionaryRef _cache;
@@ -385,11 +160,6 @@ static void XZHConvertModelToJSONApplierFunction(const void *mappedToKey, const 
     dispatch_semaphore_signal(_semephore);
     
     if (!clsMapper) {
-        /**
-         *  下面拿到的XZHClassModel对象，已经被内部单例缓存dic持有，所以此处就不需要进行持有，保持弱引用即可。后面这样的地方都使用__unsafe_unretained来修饰指针。
-         *  尝试使用__weak修饰，发现耗时比较多的，因为__weak指针在使用的时候，会被注册到AutoReleasePool中。
-         *  __unsafe_unretained类似__weak，不会retain对象，但是不会像__weak修饰的对象会自动注册到AutoReleasePool，所以比__weak运行速度快。
-         */
         __unsafe_unretained XZHClassModel *clsModel = [XZHClassModel classModelWithClass:cls];
         
         clsMapper = [[XZHClassMapper alloc] init];
@@ -417,17 +187,11 @@ static void XZHConvertModelToJSONApplierFunction(const void *mappedToKey, const 
             clsTmpModel = clsTmpModel.superClassModel;
         }
         
-        /**
-         *  移除忽略映射的属性
-         */
         if (XZHClassRespondsToSelector(cls, @selector(xzh_ignoreMappingJSONKeys))) {
             NSArray *ignoreJSONKeys = [(id<XZHJSONModelMappingRules>)cls xzh_ignoreMappingJSONKeys];
             if (ignoreJSONKeys) {[allPropertyNames removeObjectsInArray:ignoreJSONKeys];}
         }
         
-        /**
-         *  如果属性的类型是Array、Set、Dictionary容器时，记录其数组内部元素Class
-         */
         if (XZHClassRespondsToSelector(cls, @selector(xzh_containerClass))) {
             NSDictionary *classInArrayDic = [(id<XZHJSONModelMappingRules>)cls xzh_containerClass];
             [classInArrayDic enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull propertyName, id  _Nonnull class, BOOL * _Nonnull stop) {
@@ -444,10 +208,6 @@ static void XZHConvertModelToJSONApplierFunction(const void *mappedToKey, const 
             }];
         }
         
-        /**
-         *  建立自定义属性映射jsonkey
-         *  <jsonKey : PropertyMapper>
-         */
         if (XZHClassRespondsToSelector(cls, @selector(xzh_customerMappings))) {
             NSDictionary *customerJSONKeyMapping = [(id<XZHJSONModelMappingRules>)cls xzh_customerMappings];
             [customerJSONKeyMapping enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull propertyName, id  _Nonnull jsonKey, BOOL * _Nonnull stop) {
@@ -462,11 +222,6 @@ static void XZHConvertModelToJSONApplierFunction(const void *mappedToKey, const 
                 
                 XZHPropertyMappedToJsonKeyType type = 0;
                 if ([jsonKey isKindOfClass:[NSString class]]) {
-                    /**
-                     *  情况一、{属性 : user_name}
-                     *  情况二、{属性 : user.name}
-                     *  情况三、{属性1 : name}, {属性2 : name}, {属性3 : name}
-                     */
                     if ([jsonKey rangeOfString:@"."].location != NSNotFound) {
                         newMapper->_mappedToKeyPath = jsonKey;
                         type = XZHPropertyMappedToJsonKeyTypeKeyPath;
@@ -475,17 +230,10 @@ static void XZHConvertModelToJSONApplierFunction(const void *mappedToKey, const 
                         type = XZHPropertyMappedToJsonKeyTypeSimple;
                     }
                 } else if ([jsonKey isKindOfClass:[NSArray class]]) {
-                    /**
-                     *  情况四、{属性 : [name1, name2, name3, user.name]}
-                     */
                     newMapper->_mappedToKeyArray = jsonKey;
                     type = XZHPropertyMappedToJsonKeyTypeKeyArray;
                 }
                 newMapper->_mappedType = type;
-                
-                /**
-                 *  处理多个不同属性，映射同一个jsonkey
-                 */
                 __unsafe_unretained XZHPropertyMapper *preMapper = CFDictionaryGetValue(jsonKeyPropertyMapperDic, (__bridge const void *)(jsonKey));
                 if (preMapper) {
                     newMapper->_next = preMapper;
@@ -511,10 +259,6 @@ static void XZHConvertModelToJSONApplierFunction(const void *mappedToKey, const 
             }];
         }
         
-        /**
-         *  没有自定义jsonkey与属性映射，按照simple jsonkey 映射
-         *  格式: <jsonKey:PropertyMapper>
-         */
         [allPropertyNames enumerateObjectsUsingBlock:^(NSString * _Nonnull propertyName, NSUInteger idx, BOOL * _Nonnull stop) {
             __unsafe_unretained XZHPropertyModel *propertyModel = [clsModel.propertyMap objectForKey:propertyName];
             if (!propertyModel) {return ;}
@@ -602,12 +346,10 @@ static void XZHConvertModelToJSONApplierFunction(const void *mappedToKey, const 
     if (jsonDic.count <= clsMapper->_totalMappedCount) {
         CFDictionaryApplyFunction((CFDictionaryRef)jsonDic, XZHJsonToModelDicApplierFunction, &ctx);
         
-        // property mapped to keyPath
         if(clsMapper->_keyPathMappedCount > 0) {
             CFArrayApplyFunction(clsMapper->_keyPathPropertyMappers, CFRangeMake(0, clsMapper->_keyPathMappedCount), XZHJsonToModelArrayApplierFunction, &ctx);
         }
         
-        // property mapped to keyArray
         if(clsMapper->_keyArrayMappedCount > 0) {
             CFArrayApplyFunction(clsMapper->_keyArrayPropertyMappers, CFRangeMake(0, clsMapper->_keyArrayMappedCount), XZHJsonToModelArrayApplierFunction, &ctx);
         }
@@ -916,19 +658,9 @@ static id XZHConvertModelToAbleJSONSerialization(__unsafe_unretained id object) 
     if ([object isKindOfClass:[NSAttributedString class]]) {return [(NSAttributedString*)object string];}
     if ([object isKindOfClass:[NSURL class]]) {return [(NSURL*)object absoluteString];}
     if ([object isKindOfClass:[NSDate class]]) {return [XZHDateFormatter(nil) stringFromDate:object];}
-    
-    /**
-     *  不符合json化的基本Foundation类型 >>> NSData（后续如果需要转NSString再说）
-     */
+   
     if ([object isKindOfClass:[NSData class]]) return nil;
-    
-    /**
-     *  需要检测是否能够json化的容器类型一、NSDictionry的json化处理
-     *
-     *  主要进行修正的规则:
-     *  - (1) All objects are instances of NSString, NSNumber, NSArray, NSDictionary, or NSNull.
-     *  - (2) All dictionary keys are instances of NSString.
-     */
+   
     if ([object isKindOfClass:[NSDictionary class]]) {
         if ([NSJSONSerialization isValidJSONObject:object]) {return object;}
         NSMutableDictionary *newDic = [NSMutableDictionary new];
@@ -942,12 +674,6 @@ static id XZHConvertModelToAbleJSONSerialization(__unsafe_unretained id object) 
         return newDic;
     }
     
-    /**
-     *  需要检测是否能够json化的容器类型二、NSArray的json化处理
-     *  
-     *  主要进行修正的规则:
-     *  - (1) All objects are instances of NSString, NSNumber, NSArray, NSDictionary, NSNull.
-     */
     if ([object isKindOfClass:[NSArray class]]) {
         if ([NSJSONSerialization isValidJSONObject:object]) {return object;}
         NSArray *arrayObj = object;
@@ -964,13 +690,6 @@ static id XZHConvertModelToAbleJSONSerialization(__unsafe_unretained id object) 
         return newArray;
     }
     
-    /**
-     *  需要检测是否能够json化的容器类型三、NSSet的json化处理
-     *
-     *  主要进行修正的规则:
-     *  - (1) NSSet >>> NSArray
-     *  - (2) All objects are instances of NSString, NSNumber, NSArray, NSDictionary, NSNull.
-     */
     if ([object isKindOfClass:[NSSet class]]) {
         if ([NSJSONSerialization isValidJSONObject:object]) {return object;}
         NSSet *setObj = object;
@@ -987,12 +706,6 @@ static id XZHConvertModelToAbleJSONSerialization(__unsafe_unretained id object) 
         return newArray;
     }
     
-    /**
-     *  需要检测是否能够json化的容器类型四、自定义NSObject实体类json化处理
-     *  将model对象重新组装成一个NSDictionary对象
-     *  - 属性mappedToJsonKey >>>> dic.key
-     *  - 属性值 >>> dic.value
-     */
     __unsafe_unretained XZHClassMapper *classMapper = [XZHClassMapper classMapperWithClass:[object class]];
     if (!classMapper || (0 == classMapper->_totalMappedCount)) {return nil;}
     NSMutableDictionary *objectDic = [[NSMutableDictionary alloc] initWithCapacity:64];
@@ -1102,13 +815,6 @@ static void XZHSetFoundationObjectToProperty(__unsafe_unretained id jsonItemValu
     if (!propertyMapper->_isSetterAccess) {return;}
     SEL setter = propertyMapper->_property.setter;
     
-    /**
-     *  三种类型:
-     *  - (1) Foundation                    >>> XZHFoundationTypeNone != propertyMapper->_foundationType
-     *  - (2) int\float\double\bool\char    >>> YES == propertyMapper->_isCNumber
-     *  - (3) char*\int*\CF...Ref\CGRect
-     */
-    
     if (XZHFoundationTypeNone != propertyMapper->_foundationType){
         if (XZHFoundationTypeNSNull == propertyMapper->_foundationType) {
             if ([jsonItemValue isKindOfClass:[NSNull class]]) {((void (*)(id, SEL, NSNull*))(void *) objc_msgSend)(model, setter, (id)kCFNull);}
@@ -1214,15 +920,6 @@ static void XZHSetFoundationObjectToProperty(__unsafe_unretained id jsonItemValu
                                 id newItem = [cls xzh_modelFromJSONDictionary:item];
                                 if (newItem)  {[mutableArray addObject:newItem];}
                             }
-                            /**
-                             *  如果数组元素内部子元素又是Array类型，通过如下组装成如下json格式:
-                             *  @[
-                             *      @"array1" : @[@"1", @"2", @"3"],
-                             *      @"array2" : @[@"1", @"2", @"3"],
-                             *      @"array3" : @[@"1", @"2", @"3"]
-                             *  ]
-                             *  将内部的Array子对象，包装成一个实体类，其内部拥有一个Array类型的属性即可.
-                             */
                         }
                         ((void (*)(id, SEL, NSArray*))(void *) objc_msgSend)(model, setter, (propertyMapper->_foundationType == XZHFoundationTypeNSArray) ? mutableArray.copy : mutableArray);
                     } else {
@@ -1440,20 +1137,6 @@ static void XZHSetFoundationObjectToProperty(__unsafe_unretained id jsonItemValu
                 break;
         }
     } else {
-        /**
-         *  C指针类型的变量，统一使用NSValue进行包装
-         *  且使用NSValue包装c指针变量，会默认都转换成 `void*` 类型，其type encoding >>>> `^v`
-         *
-         *  - (1) c指针变量、CoreFoundation部分结构体实例指针变量
-         *      - NSValue >>>> c指针变量
-         *      - c指针变量 >>>> void*
-         *      - c指针变量 >>>> Class/SEL
-         *
-         *  - (2) c数组、自定义c结构体实例、c共用体实例
-         *      - 只能当做NSValue存取
-         *      - 目前没有看到过 @property 声明c数组的形式
-         *      - @property 声明 c结构体实例指针 ，自定义的c结构体实例 可能是不能支持 KVC、Achiver
-         */
         switch (propertyMapper->_typeEncoding & XZHTypeEncodingDataTypeMask) {
             case XZHTypeEncodingCString:
             case XZHTypeEncodingCPointer: {
@@ -1521,7 +1204,6 @@ static void XZHSetFoundationObjectToProperty(__unsafe_unretained id jsonItemValu
             case XZHTypeEncodingCArray:
             case XZHTypeEncodingCStruct:
             case XZHTypeEncodingCUnion: {
-                //只能当做NSValue进行存取
                 if (jsonItemValue == (id)kCFNull) {
                     ((void (*)(id, SEL, SEL))(void *) objc_msgSend)(model, setter, (SEL)NULL);
                 } else if ([jsonItemValue isKindOfClass:[NSValue class]]) {

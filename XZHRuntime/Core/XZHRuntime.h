@@ -12,86 +12,9 @@
 
 #define xzh_force_inline __inline__ __attribute__((always_inline))
 
-/**
- * 
- ************************************************************************************************
-    Objective-C中所有数据类型的type encodings定义，主要分为三类（参考自YYModel）:
-        - (1) Ivar/ReturnValue返回值 类型编码 
-            - 单选 
-            - 0 ~ 1111,1111 >>> 255种状态
-            - Mask掩码 >>> 111,1111 >>> 0xFF
-        - (2) Method的编码，方法修饰符   
-            - 多选
-            - 9位 ~ 16位 >>>> 8种状态
-            - Mask掩码 >>> 111,1111,0000,0000 >>> 0xFF,00
-        - (3) Property的编码，属性读取修饰符、getter/setter生成修饰符、内存管理修饰符  
-            - 多选
-            - 17位 ~ 24位 >>> 8种状态
-            - Mask掩码 >>> 111,1111,0000,0000,0000,0000 >>> 0xFF,00,00
 
-     type encoding apple doc:
-     https://developer.apple.com/library/mac/documentation/Cocoa/Conceptual/ObjCRuntimeGuide/Articles/ocrtTypeEncodings.html
- ************************************************************************************************
-    如下是具体解析一个objc_property_attribute_t时候的逻辑:
- 
-     - `T` >>> 标示@property的type encodings字符串，eg: T@"NSString",C,N,V_name
-        - 基本数值数据类型(c数据类型)
-             - `c` >>> A char
-             - `i` >>> An int
-             - `s` >>> A short
-             - `l` >>> A long（l is treated as a 32-bit quantity on 64-bit programs.）
-             - `q` >>> A long long
-             - `C` >>> An unsigned char
-             - `I` >>> An unsigned int
-             - `S` >>> An unsigned short
-             - `L` >>> An unsigned long
-             - `Q` >>> An unsigned long long
-             - `f` >>> A float
-             - `d` >>> A double
-             - `B` >>> A C++ bool or a C99 _Bool
-        - Foundation类型
-             - @ >>> An object (whether statically typed or typed id)
-                - @NSString、@NSArray、@Person ...
-                - @? ===> NSBlock
-             - `?` >>> An unknown type (among other things, this code is used for function pointers)
-             - 长度一定是大于等于2，才是有效的Foundation类型
-        - CoreFoundation类型
-             - `#` >>> A class object (Class)
-             - `:` >>> A method selector (SEL)
-             - `[array type]` >>> An array
-             - `{name=type...}` >>> A structure
-             - `(name=type...)` >>>  A union
-             - `bnum` >>> A bit field of num bits
-             - `^type` >>> A pointer to type
-             - `v` >>> A void
-             - `*` >>> A character string (char *)
-     - `V` >>> 标示实例变量的名字
-     - `R` >>> The property is read-only (readonly).
-     - `C` >>> The property is a copy of the value last assigned (copy).
-     - `&` >>> The property is a reference to the value last assigned (retain).
-     - `N` >>> The property is non-atomic (nonatomic).
-     - `G` >>> The property defines a custom getter sel
-     - `S` >>> The property defines a custom setter sel
-     - `D` >>> The property is dynamic (@dynamic)
-     - `W` >>> The property is a weak reference (__weak)
-     - `P` >>> The property is eligible for garbage collection
-     - `t` >>> Specifies the type using old-style encoding
-  ************************************************************************************************
-    如下是解析一个objc_method_description时的逻辑
-    - `r` >>> const
-    - `n` >>> in
-    - `N` >>> inout
-    - `o` >>> out
-    - `O` >>> bycopy
-    - `R` >>> byref
-    - `V` >>> oneway
-    ************************************************************************************************
- */
 typedef NS_ENUM(NSInteger, XZHTypeEncoding) {
     
-////////////////////////////////////////////////////////////////////////////////////////////////
-/// Objective-c 常用数据类型编码 0xFF >>> 1111,1111
-////////////////////////////////////////////////////////////////////////////////////////////////
     XZHTypeEncodingDataTypeMask                                         = 0xFF,
     
     // 基本数据类型、Foundation Obejct类型
@@ -123,18 +46,6 @@ typedef NS_ENUM(NSInteger, XZHTypeEncoding) {
     XZHTypeEncodingCPointer                                             = 23,//@encode(char *) >>> ^i >>> ^类型
     XZHTypeEncodingCBitFields                                           = 24,//bnum >>> A bit field of num bits (这个好像用的很少在iOS中)
     
-////////////////////////////////////////////////////////////////////////////////////////////////
-/// Objective-C method 编码 0xFF00 >>> 1111,1111,0000,0000
-/// 方法的修饰符是可以叠加的
-///
-///     r const
-///     n in
-///     N inout
-///     o out
-///     O bycopy
-///     R byref
-///     V oneway
-////////////////////////////////////////////////////////////////////////////////////////////////
     XZHTypeEncodingMethodMask                                           = 0xFF00,
     XZHTypeEncodingMethodConst                                          = 1<<8,
     XZHTypeEncodingMethodIn                                             = 1<<9,
@@ -144,38 +55,6 @@ typedef NS_ENUM(NSInteger, XZHTypeEncoding) {
     XZHTypeEncodingMethodByRef                                          = 1<<13,
     XZHTypeEncodingMethodOneWay                                         = 1<<14,
 
-    
-////////////////////////////////////////////////////////////////////////////////////////////////
-/// Objective-C @property属性类型编码 0xFF0000 >>> 1111,1111,0000,0000,0000,0000
-/// 属性修饰符是可以互相叠加的
-///
-///    T Means this is property's encoding type string. 比如: @property(copy) id name; >>> T@,C,Vname
-///    V The instance variable's name (ivar name)
-///    R The property is read-only (readonly).
-///    C The property is a copy of the value last assigned (copy).
-///    & The property is a reference to the value last assigned (retain).
-///    N The property is non-atomic (nonatomic).
-///    G<name> The property defines a custom getter selector name. The name follows the G (@property (getter=hahaname) NSString *name;).
-///    S<name> The property defines a custom setter selector name. The name follows the S (@property (setter=setHahaname:) NSString *name;).
-///    D The property is dynamic (@dynamic).
-///    W The property is a weak reference (__weak).
-///    P The property is eligible for garbage collection.
-///    t<encoding> Specifies the type using old-style encoding.
-///    @property char charDefault;                         Tc,VcharDefault
-///    @property double doubleDefault;                     Td,VdoubleDefault
-///    @property enum FooManChu enumDefault;               Ti,VenumDefault
-///    @property float floatDefault;                       Tf,VfloatDefault
-///    @property int intDefault;                           Ti,VintDefault
-///    @property long longDefault;                         Tl,VlongDefault
-///    @property short shortDefault;                       Ts,VshortDefault
-///    @property signed signedDefault;                     Ti,VsignedDefault
-///    @property struct YorkshireTeaStruct structDefault;  T{YorkshireTeaStruct="pot"i"lady"c},VstructDefault
-///    @property YorkshireTeaStructType typedefDefault;    T{YorkshireTeaStruct="pot"i"lady"c},VtypedefDefault
-///    @property union MoneyUnion unionDefault;            T(MoneyUnion="alone"f"down"d),VunionDefault
-///    @property unsigned unsignedDefault;                 TI,VunsignedDefault
-///    @property int (*functionPointerDefault)(char *);    T^?,VfunctionPointerDefault
-///    @property id idDefault;
-///////////////////////////////////////////////////////////////////////////////////////////////////////
     XZHTypeEncodingPropertyMask                                             = 0xFF0000,
 //    XZHTypeEncodingPropertyT  表示属性的编码字符串
 //    XZHTypeEncodingPropertyV  表示Ivar的名字

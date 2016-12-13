@@ -24,45 +24,6 @@ static char* XZHSubstring(char* ch, size_t pos, size_t length) {
     return subch;
 }
 
-/**
- *  支持KVC的c结构体类型
- */
-//static BOOL XZHIsCStructKVCCompatible(const char *typeEncoding) {
-//    NSString *type = [NSString stringWithUTF8String:typeEncoding];
-//    if (!type) return NO;
-//    static NSSet *types = nil;
-//    static dispatch_once_t onceToken;
-//    dispatch_once(&onceToken, ^{
-//        NSMutableSet *set = [NSMutableSet new];
-//        // 32 bit
-//        [set addObject:@"{CGSize=ff}"];
-//        [set addObject:@"{CGPoint=ff}"];
-//        [set addObject:@"{CGRect={CGPoint=ff}{CGSize=ff}}"];
-//        [set addObject:@"{CGAffineTransform=ffffff}"];
-//        [set addObject:@"{UIEdgeInsets=ffff}"];
-//        [set addObject:@"{UIOffset=ff}"];
-//        // 64 bit
-//        [set addObject:@"{CGSize=dd}"];
-//        [set addObject:@"{CGPoint=dd}"];
-//        [set addObject:@"{CGRect={CGPoint=dd}{CGSize=dd}}"];
-//        [set addObject:@"{CGAffineTransform=dddddd}"];
-//        [set addObject:@"{UIEdgeInsets=dddd}"];
-//        [set addObject:@"{UIOffset=dd}"];
-//        types = set;
-//    });
-//    if ([types containsObject:type]) {
-//        return YES;
-//    }
-//    return NO;
-//}
-
-/**
- *  因为Foundation并没有给出NSBlock这个类，所以只能通过Block实例不断向父类查询类型
- *  如下代码找到的是 NSBlock 这个是三种block类型的`类簇类`，而真正使用的三种block内部类型:
- *  >>>>  __NSGlobalBlock__ >>>> objc_getClass("__NSGlobalBlock__");
- *  >>>>  __NSMallocBlock__ >>>> objc_getClass("__NSMallocBlock__");
- *  >>>>  __NSStackBlock__  >>>> objc_getClass("__NSStackBlock__");
- */
 Class XZHGetNSBlockClass() {
     static Class NSBlock = Nil;
     static dispatch_once_t onceToken;
@@ -99,31 +60,6 @@ XZHFoundationType XZHGetFoundationType(Class cls) {
     else if ([cls isSubclassOfClass:[NSObject class]]) {return XZHFoundationTypeCustomer;}//last case
     else {return XZHFoundationTypeNone;}
 }
-
-// 举得还是不能如下这么写死类型，因为可能随着iOS SDK升级这些类名可能会发生变化、以及集成结构也会变化。
-//static xzh_force_inline XZHFoundationType XZHGetObjectFoundationType(id obj) {
-//    if (!obj) {return XZHFoundationTypeNone;}
-//    Class cls = [obj class];
-//    if (cls == objc_getClass("__NSArrayI") || cls == objc_getClass("__NSArray0")) {return XZHFoundationTypeNSArray;}
-//    else if (cls == objc_getClass("__NSArrayM")) {return XZHFoundationTypeNSMutableArray;}
-//    else if (cls == objc_getClass("NSURL")) {return XZHFoundationTypeNSURL;}
-//    else if (cls == objc_getClass("__NSSetI") || cls == objc_getClass("__NSSingleObjectSetI")) {return XZHFoundationTypeNSSet;}
-//    else if (cls == objc_getClass("__NSSetM")) {return XZHFoundationTypeNSMutableSet;}
-//    else if (cls == objc_getClass("__NSDictionary0") || cls == objc_getClass("__NSDictionaryI")) {return XZHFoundationTypeNSDictionary;}
-//    else if (cls == objc_getClass("__NSDictionaryM")) {return XZHFoundationTypeNSMutableDictionary;}
-//    else if (cls == objc_getClass("__NSDate")) {return XZHFoundationTypeNSDate;}
-//    else if (cls == objc_getClass("_NSZeroData") || cls == objc_getClass("NSConcreteData")) {return XZHFoundationTypeNSData;}
-//    else if (cls == objc_getClass("NSConcreteMutableData")) {return XZHFoundationTypeNSMutableData;}
-//    else if (cls == objc_getClass("__NSCFNumber")) {return XZHFoundationTypeNSNumber;}
-//    else if (cls == objc_getClass("NSDecimalNumber")) {return XZHFoundationTypeNSDecimalNumber;}
-//    else if (cls == objc_getClass("__NSCFConstantString") || cls == objc_getClass("NSTaggedPointerString")) {return XZHFoundationTypeNSString;}
-//    else if (cls == objc_getClass("__NSCFString")) {return XZHFoundationTypeNSMutableString;}
-//    else if (cls == objc_getClass("NSConcreteValue")) {return XZHFoundationTypeNSValue;}
-//    else if (cls == objc_getClass("__NSGlobalBlock__") || cls == objc_getClass("__NSMallocBlock__") || cls == objc_getClass("__NSStackBlock__")) {return XZHFoundationTypeNSBlock;}
-//    else if (obj == (id)kCFNull) {return XZHFoundationTypeNSNull;}
-//    else {return XZHFoundationTypeUnKnown;}//未知、自定义类型
-//    return XZHGetFoundationType([obj class]);
-//}
 
 XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
     if (NULL == encodings) {return XZHTypeEncodingsUnKnown;}
@@ -297,14 +233,7 @@ XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
         //eg、"Tq,N,V_price"、T@"NSString",C,N,V_name 属性的整串编码字符串
         const char *c_attributes = property_getAttributes(property);
         if (NULL != c_attributes) {_fullEncodingString = [NSString stringWithUTF8String:c_attributes];}
-        
-        /**
-         *  获取一个@property属性的所有的objc_property_attribute_t实例
-         *  - name = T, value = @NSString、@NSArray、c、q、L ...        >>>> Ivar的数据类型
-         *  - name = C, value =                                        >>>> copy
-         *  - name = N, value =                                        >>>> nonatomic
-         *  - name = V, value = _name                                  >>>> Ivar的名字叫做 _name
-         */
+     
         unsigned int num = 0;
         objc_property_attribute_t *atts = property_copyAttributeList(property, &num);
         
@@ -741,14 +670,14 @@ XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
 static dispatch_semaphore_t semaphore = NULL;
 @implementation XZHClassModel {
     @package
-    BOOL _isNeedUpdate;    //标记是否需要重新解析
+    BOOL _isNeedUpdate;
 }
 
 + (instancetype)classModelWithClass:(Class)cls {
     if (Nil == cls) {return nil;}
     
-    static CFMutableDictionaryRef classCache;//类本身的解析缓存
-    static CFMutableDictionaryRef metaClsCache;//元类的解析缓存
+    static CFMutableDictionaryRef classCache;
+    static CFMutableDictionaryRef metaClsCache;
     
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -757,7 +686,6 @@ static dispatch_semaphore_t semaphore = NULL;
         semaphore = dispatch_semaphore_create(1);
     });
 
-    // 使用cls查询缓存，是否已经存在解析好的ClassModel对象
     XZHClassModel *clsModel = nil;
     BOOL isMeta = class_isMetaClass(cls);
     dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
@@ -765,7 +693,6 @@ static dispatch_semaphore_t semaphore = NULL;
     dispatch_semaphore_signal(semaphore);
     
     if (clsModel) {
-        // 存在ClassModel对象缓存，并且需要重新解析，然后缓存
         if (clsModel->_isNeedUpdate) {
             dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);//lock
             [clsModel _parse];
@@ -773,7 +700,6 @@ static dispatch_semaphore_t semaphore = NULL;
             dispatch_semaphore_signal(semaphore);//unlock
         }
     } else {
-        // 不存在ClassModel对象缓存，直接进行解析，然后缓存
         clsModel = [[XZHClassModel alloc] initWithClass:cls];
         if (!clsModel) {return nil;}
         
@@ -784,7 +710,6 @@ static dispatch_semaphore_t semaphore = NULL;
     return clsModel;
 }
 
-// 该函数可以在任意线程上执行，创建内部所有子对象，只需要最终设置到缓存dic时，处理多线程同步
 - (instancetype)initWithClass:(Class)cls {
     if (Nil == cls) {return nil;}
     if (self = [super init]) {
