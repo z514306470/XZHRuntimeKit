@@ -138,13 +138,13 @@ static NSString* XZHGetObjectDescription(NSObject *object) {
             }
         }
             break;
-        case XZHFoundationTypeCustomer: {
+        case XZHFoundationTypeUnknown: {
             NSMutableString *desc = [[NSMutableString alloc] initWithCapacity:100];
             if (0 == clsModel.propertyMap.count) {return [NSString stringWithFormat:@"<%@ : %p>   {}", [object class], object];}
             
             [desc appendFormat:@"<%@ : %p>%@{\n", [object class], object, kSpaceString];
             NSMutableArray *propertyModelArray = [[NSMutableArray alloc] initWithCapacity:32];
-            while (clsModel && clsModel.superCls != nil) {
+            while (clsModel) {
                 for (__unsafe_unretained XZHPropertyModel *proModel in clsModel.propertyMap.allValues) {
                     if (!proModel.name) {continue;}
                     if (!proModel.setter || !proModel.getter) {continue;}
@@ -204,7 +204,7 @@ static NSString* XZHGetObjectDescription(NSObject *object) {
     NSObject *newOne = [[selfClass alloc] init];
     NSMutableArray *propertyModelArray = [[NSMutableArray alloc] initWithCapacity:32];
     __unsafe_unretained XZHClassModel *clsModel = [XZHClassModel classModelWithClass:[self class]];
-    while (clsModel && clsModel.superCls != nil) {
+    while (clsModel) {
         for (__unsafe_unretained XZHPropertyModel *proModel in clsModel.propertyMap.allValues) {
             if (!proModel.name) {continue;}
             if (!proModel.setter || !proModel.getter) {continue;}
@@ -415,7 +415,7 @@ static NSString* XZHGetObjectDescription(NSObject *object) {
     NSObject *newOne = [[selfClass alloc] init];
     NSMutableArray *propertyModelArray = [[NSMutableArray alloc] initWithCapacity:32];
     __unsafe_unretained XZHClassModel *clsModel = [XZHClassModel classModelWithClass:selfClass];
-    while (clsModel && clsModel.superCls != nil) {
+    while (clsModel) {
         for (__unsafe_unretained XZHPropertyModel *proModel in clsModel.propertyMap.allValues) {
             if (!proModel.name) {continue;}
             if (!proModel.setter || !proModel.getter) {continue;}
@@ -552,7 +552,7 @@ static NSString* XZHGetObjectDescription(NSObject *object) {
                     }
                 }
                     break;
-                case XZHFoundationTypeCustomer: {
+                case XZHFoundationTypeUnknown: {
                     id copyItem = [value xzh_deepCopy];
                     if (copyItem) {
                         ((void (*)(id, SEL, id))(void *) objc_msgSend)(newOne, setter, copyItem);
@@ -631,7 +631,7 @@ static NSString* XZHGetObjectDescription(NSObject *object) {
     
     NSMutableArray *propertyModelArray = [[NSMutableArray alloc] initWithCapacity:32];
     __unsafe_unretained XZHClassModel *clsModel = [XZHClassModel classModelWithClass:[self class]];
-    while (clsModel && clsModel.superCls != nil) {
+    while (clsModel) {
         for (__unsafe_unretained XZHPropertyModel *proModel in clsModel.propertyMap.allValues) {
             if (!proModel.name) {continue;}
             if (!proModel.setter || !proModel.getter) {continue;}
@@ -733,7 +733,7 @@ static NSString* XZHGetObjectDescription(NSObject *object) {
         } else if (XZHFoundationTypeNone != proM.foundationType) {
             id obj1 = ((id (*)(id, SEL))(void *) objc_msgSend)(self, getter);
             id obj2 = ((id (*)(id, SEL))(void *) objc_msgSend)(object, getter);
-            if (XZHFoundationTypeCustomer == proM.foundationType) {
+            if (XZHFoundationTypeUnknown == proM.foundationType) {
                 if (NO == [obj1 xzh_isEqulToObject:obj2]) {
                     return NO;
                 }
@@ -784,11 +784,11 @@ static NSString* XZHGetObjectDescription(NSObject *object) {
 - (NSUInteger)xzh_hash {
     if ((id)kCFNull == self) {return [self hash];}
     __unsafe_unretained XZHClassModel *clsModel = [XZHClassModel classModelWithClass:[self class]];
-    if (clsModel.foundationType != XZHFoundationTypeNone && clsModel.foundationType != XZHFoundationTypeCustomer) {return [self hash];}
+    if (clsModel.foundationType != XZHFoundationTypeNone && clsModel.foundationType != XZHFoundationTypeUnknown) {return [self hash];}
     
     NSUInteger _hash = 0;
     NSMutableArray *propertyModelArray = [[NSMutableArray alloc] initWithCapacity:32];
-    while (clsModel && clsModel.superCls != nil) {
+    while (clsModel) {
         for (__unsafe_unretained XZHPropertyModel *proModel in clsModel.propertyMap.allValues) {
             if (!proModel.name) {continue;}
             if (!proModel.setter || !proModel.getter) {continue;}
@@ -877,7 +877,7 @@ static NSString* XZHGetObjectDescription(NSObject *object) {
             }
         } else if (XZHFoundationTypeNone != proM.foundationType) {
             id obj1 = ((id (*)(id, SEL))(void *) objc_msgSend)(self, getter);
-            if (XZHFoundationTypeCustomer == proM.foundationType) {
+            if (XZHFoundationTypeUnknown == proM.foundationType) {
                 _hash ^= [obj1 xzh_hash];
             } else {
                 _hash ^= [obj1 hash];

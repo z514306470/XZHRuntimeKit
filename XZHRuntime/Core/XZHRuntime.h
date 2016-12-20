@@ -12,14 +12,16 @@
 
 #define xzh_force_inline __inline__ __attribute__((always_inline))
 
-
+//type encodings 主要分为三类（参考自YYModel）:
 typedef NS_ENUM(NSInteger, XZHTypeEncoding) {
     
     XZHTypeEncodingDataTypeMask                                         = 0xFF,
-    
-    // 基本数据类型、Foundation Obejct类型
     XZHTypeEncodingsUnKnown                                             = 0,//? >>> An unknown type (among other things, this code is used for function pointers)
-    XZHTypeEncodingFoundationObject                                     = 1,// @ >>> OC Foudnation Object
+    
+    // Foundation对象
+    XZHTypeEncodingFoundationObject                                     = 1,// @ >>> An OC Foudnation Object
+    
+    // 基本数据类型
     XZHTypeEncodingChar                                                 = 2,//c >>> A char、int8_t、
     XZHTypeEncodingUnsignedChar                                         = 3,//C >>> An unsigned char、uint8_t
     XZHTypeEncodingBOOL                                                 = 4,//B >>> BOOL
@@ -67,33 +69,29 @@ typedef NS_ENUM(NSInteger, XZHTypeEncoding) {
     XZHTypeEncodingPropertyReadonly                                         = 1<<21,
     XZHTypeEncodingPropertyStrong                                           = 1<<22,
     XZHTypeEncodingPropertyWeak                                             = 1<<23,
-//    XZHTypeEncodingPropertyOldStyleCoding                                   = 1<<24, //iOS SDK版本太老，现在基本上用不到
+//    XZHTypeEncodingPropertyOldStyleCoding                                   = 1<<24, // iOS SDK版本太老，现在基本上用不到
 };
 
-/**
- *  Objective-C Foundation 对象类型，参考Foundation.h中常用的类型
- *  对上面XZHTypeEncodingFoundationObject这个枚举值的分类细化
- */
 typedef NS_ENUM(NSInteger, XZHFoundationType) {
-    XZHFoundationTypeNone   = 0,
+    XZHFoundationTypeNone                       = 0,// 不是NSObject类型
+    XZHFoundationTypeUnknown,
     XZHFoundationTypeNSString,
     XZHFoundationTypeNSMutableString,
     XZHFoundationTypeNSNumber,
     XZHFoundationTypeNSDecimalNumber,
+    XZHFoundationTypeNSData,
+    XZHFoundationTypeNSMutableData,
     XZHFoundationTypeNSURL,
+    XZHFoundationTypeNSDate,
+    XZHFoundationTypeNSValue,
+    XZHFoundationTypeNSNull,
+    XZHFoundationTypeNSBlock,
     XZHFoundationTypeNSArray,
     XZHFoundationTypeNSMutableArray,
     XZHFoundationTypeNSSet,
     XZHFoundationTypeNSMutableSet,
     XZHFoundationTypeNSDictionary,
     XZHFoundationTypeNSMutableDictionary,
-    XZHFoundationTypeNSDate,
-    XZHFoundationTypeNSData,
-    XZHFoundationTypeNSMutableData,
-    XZHFoundationTypeNSValue,
-    XZHFoundationTypeNSNull,
-    XZHFoundationTypeNSBlock,
-    XZHFoundationTypeCustomer,//自定义的NSObject子类
 };
 
 @class XZHClassModel;
@@ -136,21 +134,41 @@ typedef NS_ENUM(NSInteger, XZHFoundationType) {
  */
 
 @interface XZHPropertyModel : NSObject
-@property (nonatomic, copy, readonly) NSString *name;//Ivar的名字，eg: _name
-@property (nonatomic, strong) NSArray<NSString *> *protocols;//如: @property (nonatomic, strong) NSArray<协议1,协议2,协议3...> *arr;
+
+// Ivar的名字，eg: _name
+@property (nonatomic, copy, readonly) NSString *name;
+
+// 如: @property (nonatomic, strong) NSArray<协议1,协议2,协议3...> *arr;
+@property (nonatomic, strong) NSArray<NSString *> *protocols;
+
+// getter与setter
 @property (nonatomic, assign, readonly) SEL getter;//如：name
 @property (nonatomic, assign, readonly) SEL setter;//如：setName:
-@property (nonatomic, assign, readonly) XZHTypeEncoding typeEncoding;
-@property (nonatomic, assign, readonly) XZHFoundationType foundationType;
-@property (nonatomic, assign, readonly) Class cls;//Ivar的类型
-@property (nonatomic, copy, readonly) NSString *fullEncodingString;//eg、"Tq,N,V_price"、T@"NSString",C,N,V_name 属性的整串编码字符串
-@property (nonatomic, copy, readonly) NSString *ivarEncodingString;//Ivar编码字符串
-@property (nonatomic, assign, readonly) BOOL isCNumber;// Ivar是否是c基本数值类型
 @property (nonatomic, assign, readonly) BOOL isGetterAccess;
 @property (nonatomic, assign, readonly) BOOL isSetterAccess;
+@property (nonatomic, assign, readonly) BOOL isCanKVC;
+
+// Ivar编码字符串
+@property (nonatomic, copy, readonly) NSString *ivarEncodingString;
+
+// 解析属性的type encoding字符串之后的枚举值
+@property (nonatomic, assign, readonly) XZHTypeEncoding typeEncoding;
+
+// 如果属性类型是Foundation Object
+@property (nonatomic, assign, readonly) XZHFoundationType foundationType;
+
+// Ivar的Class
+@property (nonatomic, assign, readonly) Class cls;
+
+// eg、"Tq,N,V_price"、T@"NSString",C,N,V_name 属性的整串编码字符串
+@property (nonatomic, copy, readonly) NSString *fullEncodingString;
+
+// Ivar是否是c基本数值类型
+@property (nonatomic, assign, readonly) BOOL isCNumber;
 
 - (instancetype)initWithProperty:(objc_property_t)property;
 - (BOOL)isEqualToProperty:(XZHPropertyModel *)property;
+
 @end
 
 /**
@@ -168,11 +186,12 @@ typedef NS_ENUM(NSInteger, XZHFoundationType) {
 
 @interface XZHMethodModel : NSObject
 @property (nonatomic, assign, readonly) SEL sel;
+@property (nonatomic, copy, readonly)   NSString *selString;
 @property (nonatomic, assign, readonly) IMP imp;
-@property (nonatomic, copy, readonly) NSString *selString;
-@property (nonatomic, copy, readonly) NSString *returnType;
-@property (nonatomic, copy, readonly) NSArray *argumentTypes;
-@property (nonatomic, copy, readonly) NSString *type;
+@property (nonatomic, copy, readonly)   NSString *type;
+@property (nonatomic, copy, readonly)   NSString *returnType;
+@property (nonatomic, copy, readonly)   NSArray *argumentTypes;
+@property (nonatomic, assign, readonly) NSUInteger numberOfArguments;
 - (instancetype)initWithMethod:(Method)method;
 - (BOOL)isEqualToMethod:(XZHMethodModel *)method;
 @end
@@ -188,6 +207,15 @@ typedef NS_ENUM(NSInteger, XZHFoundationType) {
  */
 @interface XZHProtocolModel : NSObject
 @property (nonatomic, copy, readonly) NSString *name;
+/**
+ *  这个Protocol包含继承的父亲Protocol中，定义的所有的Method。数组中的Item结构是dic:
+ *  @{
+ *      kMethodName : Method->sel,
+ *      kMethodType : Method->type
+ *   }
+ */
+@property (nonatomic, strong, readonly) NSArray <NSDictionary*> *methods;
+
 - (instancetype)initWithProtocol:(Protocol *)protocol;
 - (instancetype)initWithProtocolName:(NSString *)protocolName;
 
@@ -213,8 +241,8 @@ typedef NS_ENUM(NSInteger, XZHFoundationType) {
  */
 
 @interface XZHCategoryModel : NSObject
-@property (nonatomic, copy, readonly) NSString *name;
-@property (nonatomic, copy, readonly) NSString *class_name;
+@property (nonatomic, copy,   readonly) NSString *name;
+@property (nonatomic, copy,   readonly) NSString *class_name;
 @property (nonatomic, strong, readonly) NSArray<XZHMethodModel*> *method_list;
 @property (nonatomic, strong, readonly) NSArray<XZHClassModel*> *class_list;
 @property (nonatomic, strong, readonly) NSArray<XZHProtocolModel*> *protocol_list;
@@ -241,16 +269,14 @@ typedef NS_ENUM(NSInteger, XZHFoundationType) {
 @interface XZHClassModel : NSObject
 @property (nonatomic, assign, readonly) BOOL isMeta;
 @property (nonatomic, assign, readonly) Class cls;
-@property (nonatomic, assign, readonly) NSString *clsName;
+@property (nonatomic, copy,   readonly) NSString *clsName;
 @property (nonatomic, strong, readonly) Class superCls;
-@property (nonatomic, copy, readonly)   NSString *name;
-@property (nonatomic, strong, readonly) NSDictionary<NSString*, XZHPropertyModel*> *propertyMap;// 属性名 : PropertyModel
-@property (nonatomic, strong, readonly) NSDictionary<NSString*, XZHIvarModel*> *ivarMap;// 实例变量名 : IvarModel
-@property (nonatomic, strong, readonly) NSDictionary<NSString*, XZHMethodModel*> *methodMap;// 方法SEL : MethodModel
-@property (nonatomic, strong, readonly) NSDictionary<NSString*, XZHProtocolModel*> *protocolMap;// 协议名 : ProtocolModel
+@property (nonatomic, strong, readonly) XZHClassModel *superClassModel;//如果super_class == NSObejct或NSProxy，那么为nil
+@property (nonatomic, strong, readonly) NSDictionary<NSString*, XZHPropertyModel*> *propertyMap;// dic:<属性名:PropertyModel>
+@property (nonatomic, strong, readonly) NSDictionary<NSString*, XZHIvarModel*> *ivarMap;// dic:<实例变量名:IvarModel>
+@property (nonatomic, strong, readonly) NSDictionary<NSString*, XZHMethodModel*> *methodMap;// dic:<方法SEL:MethodModel>
+@property (nonatomic, strong, readonly) NSDictionary<NSString*, XZHProtocolModel*> *protocolMap;// dic:<协议名:ProtocolModel>
 @property (nonatomic, assign, readonly) XZHFoundationType foundationType;
-
-@property (nonatomic, strong, readonly) XZHClassModel *superClassModel;
 
 /**
  *  创建/查询缓存解析Class >>> ClassModel对象
@@ -267,13 +293,18 @@ typedef NS_ENUM(NSInteger, XZHFoundationType) {
 - (BOOL)isEqualToClassModel:(XZHClassModel *)clsModel;
 @end
 
+#pragma mark - >>>>>>>>>>>>>>
+
+BOOL XZHClassRespondsToSelector(Class cls, SEL sel);
+
+extern NSString const *kMethodName;
+extern NSString const *kMethodType;
+NSArray *XZHGetMethodListForProtocol(Protocol *protocol);
+
 XZHTypeEncoding XZHGetTypeEncoding(const char *encodings);
 XZHFoundationType XZHGetFoundationType(Class cls);
-
 Class XZHGetNSBlockClass();
 
 typedef id (^XZHWeakRefrenceBlock)(void);
 XZHWeakRefrenceBlock XZHMakeWeakRefrenceWithObject(id obj);
 id XZHGetWeakRefrenceObject(XZHWeakRefrenceBlock block);
-
-BOOL XZHClassRespondsToSelector(Class cls, SEL sel);

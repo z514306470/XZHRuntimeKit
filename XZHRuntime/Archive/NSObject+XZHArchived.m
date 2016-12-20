@@ -20,7 +20,7 @@ static NSString *const kXZHAutocodingException = @"XZHAutocodingException";
 - (void)xzh_encodeWithCoder:(NSCoder *)aCoder {
     NSMutableArray *propertyModelArray = [[NSMutableArray alloc] initWithCapacity:32];
     __unsafe_unretained XZHClassModel *clsModel = [XZHClassModel classModelWithClass:[self class]];
-    while (clsModel && clsModel.superCls != nil) {
+    while (clsModel) {
         for (__unsafe_unretained XZHPropertyModel *propertyModel in clsModel.propertyMap.allValues) {
             if (!propertyModel.name) {continue;}
             if (!propertyModel.setter || !propertyModel.getter) {continue;}
@@ -39,7 +39,7 @@ static NSString *const kXZHAutocodingException = @"XZHAutocodingException";
     BOOL secureSupported = [[self class] supportsSecureCoding];
     NSMutableArray *propertyModelArray = [[NSMutableArray alloc] initWithCapacity:32];
     __unsafe_unretained XZHClassModel *clsModel = [XZHClassModel classModelWithClass:[self class]];
-    while (clsModel && clsModel.superCls != nil) {
+    while (clsModel) {
         for (__unsafe_unretained XZHPropertyModel *proModel in clsModel.propertyMap.allValues) {
             if (!proModel.name) {continue;}
             if (!proModel.setter || !proModel.getter) {continue;}

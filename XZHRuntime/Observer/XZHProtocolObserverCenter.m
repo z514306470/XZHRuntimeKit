@@ -8,81 +8,8 @@
 
 #import "XZHProtocolObserverCenter.h"
 #import <objc/runtime.h>
+#import "XZHRuntime.h"
 #import "NSObject+XZHInvocation.h"
-
-static NSString const *kMethodName                  = @"methodName";
-static NSString const *kMethodType                  = @"methodType";
-//static NSString const *kMethodArgumentType          = @"methodArgumentType";
-//static NSString const *kMethodReturnType            = @"methodReturnType";
-
-static dispatch_semaphore_t parse_protocol_semephore;
-NSArray *XZHGetMethodListForProtocol(Protocol *protocol) {
-    if (!protocol) {return nil;}
-    if (protocol_isEqual(protocol, @protocol(NSObject))) {return nil;}//>>>> 过滤掉NSObject根协议的method解析
-    
-    static dispatch_once_t onceToken;
-    static NSMutableDictionary *_cache;
-    dispatch_once(&onceToken, ^{
-        _cache = [NSMutableDictionary new];
-        parse_protocol_semephore = dispatch_semaphore_create(1);
-    });
-    
-    NSMutableArray *methods = nil;
-    dispatch_semaphore_wait(parse_protocol_semephore, DISPATCH_TIME_FOREVER);
-    methods = [_cache objectForKey:NSStringFromProtocol(protocol)];
-    dispatch_semaphore_signal(parse_protocol_semephore);
-    if (methods) {
-        return methods;
-    }
-    
-    methods = [NSMutableArray new];
-    unsigned int count = 0;
-    Protocol *__unsafe_unretained *superProtocols = protocol_copyProtocolList(protocol, &count);
-    if (superProtocols != NULL && count > 0) {
-        for (unsigned int index = 0; index < count; index++) {
-            NSArray * superMethods = XZHGetMethodListForProtocol(superProtocols[index]);
-            if (superMethods) {[methods addObjectsFromArray:superMethods];}
-        }
-        free(superProtocols);
-    }
-    
-    unsigned int optionalCount = 0;
-    struct objc_method_description* optionalMethods = protocol_copyMethodDescriptionList(protocol, NO, YES, &optionalCount);
-    if (optionalMethods != NULL && optionalCount > 0) {
-        for(unsigned i = 0; i < optionalCount; i++) {
-            NSString *methodName = NSStringFromSelector(optionalMethods[i].name);
-            NSString *methodTypes = [NSString stringWithCString:optionalMethods[i].types encoding:[NSString defaultCStringEncoding]];
-            NSDictionary *dic = @{
-                                  kMethodName : ((methodName != nil) ? methodName : @""),
-                                  kMethodType : ((methodTypes != nil) ? methodTypes : @""),
-                                  };
-            [methods addObject:dic];
-        }
-        free(optionalMethods);
-    }
-    
-    unsigned int requiredCount = 0;
-    struct objc_method_description* requiredMethods = protocol_copyMethodDescriptionList(protocol, YES, YES, &requiredCount);
-    if (requiredMethods != NULL && requiredCount > 0) {
-        for(unsigned i = 0; i < requiredCount; i++) {
-            NSString *methodName = NSStringFromSelector(requiredMethods[i].name);
-            NSString *methodTypes = [NSString stringWithCString:requiredMethods[i].types encoding:[NSString defaultCStringEncoding]];
-            NSDictionary *dic = @{
-                                  kMethodName : ((methodName != nil) ? methodName : @""),
-                                  kMethodType : ((methodTypes != nil) ? methodTypes : @""),
-                                  };
-            [methods addObject:dic];
-        }
-        free(requiredMethods);
-    }
-    
-    methods = methods.copy;
-    dispatch_semaphore_wait(parse_protocol_semephore, DISPATCH_TIME_FOREVER);
-    [_cache setObject:methods forKey:NSStringFromProtocol(protocol)];
-    dispatch_semaphore_signal(parse_protocol_semephore);
-    
-    return methods;
-}
 
 @interface XZHProtocolObserver : NSObject {
     @package
@@ -129,7 +56,7 @@ static dispatch_semaphore_t context_semephore = NULL;
 - (void)saveObserver:(id)object forProtocol:(Protocol *)protocol {
     if (!object || !protocol) {return;}
     __unsafe_unretained NSArray *methods = XZHGetMethodListForProtocol(protocol);
-    dispatch_semaphore_wait(parse_protocol_semephore, DISPATCH_TIME_FOREVER);
+    dispatch_semaphore_wait(context_semephore, DISPATCH_TIME_FOREVER);
     for (NSDictionary *methodDic in methods) {
         NSString *methodName = [methodDic objectForKey:kMethodName];
         NSMutableArray *observers = [_cache objectForKey:methodName];
@@ -142,7 +69,7 @@ static dispatch_semaphore_t context_semephore = NULL;
         }
         [_cache setObject:observers forKey:methodName];
     }
-    dispatch_semaphore_signal(parse_protocol_semephore);
+    dispatch_semaphore_signal(context_semephore);
 }
 /**
  *  返回的dic结构
@@ -155,7 +82,7 @@ static dispatch_semaphore_t context_semephore = NULL;
     if (!protocol) {return nil;}
     NSMutableDictionary *allObservers = [NSMutableDictionary new];
     __unsafe_unretained NSArray *methods = XZHGetMethodListForProtocol(protocol);
-    dispatch_semaphore_wait(parse_protocol_semephore, DISPATCH_TIME_FOREVER);
+    dispatch_semaphore_wait(context_semephore, DISPATCH_TIME_FOREVER);
     for (NSDictionary *methodDic in methods) {
         NSString *methodName = [methodDic objectForKey:kMethodName];
         NSArray *observers = [_cache objectForKey:methodName];
@@ -163,7 +90,7 @@ static dispatch_semaphore_t context_semephore = NULL;
             [allObservers setObject:observers forKey:methodName];
         }
     }
-    dispatch_semaphore_signal(parse_protocol_semephore);
+    dispatch_semaphore_signal(context_semephore);
     return allObservers.copy;
 }
 - (void)removeObjectForProtocol:(Protocol *)protocol {
@@ -172,7 +99,7 @@ static dispatch_semaphore_t context_semephore = NULL;
 - (void)removeObject:(id)object forProtocol:(Protocol *)protocol {
     if (!protocol) {return;}
     __unsafe_unretained NSArray *methods = XZHGetMethodListForProtocol(protocol);
-    dispatch_semaphore_wait(parse_protocol_semephore, DISPATCH_TIME_FOREVER);
+    dispatch_semaphore_wait(context_semephore, DISPATCH_TIME_FOREVER);
     for (NSDictionary *methodDic in methods) {
         NSString *methodName = [methodDic objectForKey:kMethodName];
         if (!object) {
@@ -183,12 +110,12 @@ static dispatch_semaphore_t context_semephore = NULL;
             [_cache setObject:observers forKey:methodName];
         }
     }
-    dispatch_semaphore_signal(parse_protocol_semephore);
+    dispatch_semaphore_signal(context_semephore);
 }
 - (void)clean {
-    dispatch_semaphore_wait(parse_protocol_semephore, DISPATCH_TIME_FOREVER);
+    dispatch_semaphore_wait(context_semephore, DISPATCH_TIME_FOREVER);
     [_cache removeAllObjects];
-    dispatch_semaphore_signal(parse_protocol_semephore);
+    dispatch_semaphore_signal(context_semephore);
 }
 @end
 

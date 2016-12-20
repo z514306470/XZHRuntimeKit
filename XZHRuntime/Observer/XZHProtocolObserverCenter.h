@@ -11,7 +11,7 @@
 /**
  *  递归遍历获取Protocol中定义的所有的objc_method
  *
- *  NSObejct(过滤掉)
+ *  NSObejct(根协议过滤掉)
  *      - Protocol1
  *          - Protocol2
  *              - Protocol3
@@ -31,6 +31,11 @@
  */
 NSArray *XZHGetMethodListForProtocol(Protocol *protocol);
 
+/**
+ *  内部缓存dic结构:
+ *  key >>>> method name
+ *  value >>>> @[observer1, observer2, observer3, observer4, ...., observerN]
+ */
 @interface XZHProtocolObserverCenter : NSObject
 
 + (instancetype)observerCenter;

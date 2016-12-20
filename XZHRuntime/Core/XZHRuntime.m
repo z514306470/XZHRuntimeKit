@@ -11,7 +11,9 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 
-//>>> 截取字符串
+NSString const *kMethodName                  = @"methodName";
+NSString const *kMethodType                  = @"methodType";
+
 static char* XZHSubstring(char* ch, size_t pos, size_t length) {
     char* pch=ch;
     char* subch=(char*)calloc(sizeof(char),length+1);
@@ -40,8 +42,9 @@ Class XZHGetNSBlockClass() {
 
 XZHFoundationType XZHGetFoundationType(Class cls) {
     if (NULL == cls) {return XZHFoundationTypeNone;}
-    if ([cls isSubclassOfClass:[NSNull class]]) {return XZHFoundationTypeNSNull;}
-    else if ([cls isSubclassOfClass:[NSMutableString class]]) {return XZHFoundationTypeNSMutableString;}
+    if (![cls isSubclassOfClass:[NSObject class]]) {return XZHFoundationTypeNone;}
+    
+    if ([cls isSubclassOfClass:[NSMutableString class]]) {return XZHFoundationTypeNSMutableString;}
     else if ([cls isSubclassOfClass:[NSString class]]) {return XZHFoundationTypeNSString;}
     else if ([cls isSubclassOfClass:[NSDecimalNumber class]]) {return XZHFoundationTypeNSDecimalNumber;}
     else if ([cls isSubclassOfClass:[NSNumber class]]) {return XZHFoundationTypeNSNumber;}
@@ -52,14 +55,39 @@ XZHFoundationType XZHGetFoundationType(Class cls) {
     else if ([cls isSubclassOfClass:[NSDictionary class]]) {return XZHFoundationTypeNSDictionary;}
     else if ([cls isSubclassOfClass:[NSMutableSet class]]) {return XZHFoundationTypeNSMutableSet;}
     else if ([cls isSubclassOfClass:[NSSet class]]) {return XZHFoundationTypeNSSet;}
-    else if ([cls isSubclassOfClass:[NSDate class]]) {return XZHFoundationTypeNSDate;}
     else if ([cls isSubclassOfClass:[NSMutableData class]]) {return XZHFoundationTypeNSMutableData;}
     else if ([cls isSubclassOfClass:[NSData class]]) {return XZHFoundationTypeNSData;}
+    else if ([cls isSubclassOfClass:[NSDate class]]) {return XZHFoundationTypeNSDate;}
     else if ([cls isSubclassOfClass:[NSValue class]]) {return XZHFoundationTypeNSValue;}
     else if ([cls isSubclassOfClass:XZHGetNSBlockClass()]) {return XZHFoundationTypeNSBlock;}
-    else if ([cls isSubclassOfClass:[NSObject class]]) {return XZHFoundationTypeCustomer;}//last case
-    else {return XZHFoundationTypeNone;}
+    else if ([cls isSubclassOfClass:[NSNull class]]) {return XZHFoundationTypeNSNull;}
+    else {return XZHFoundationTypeUnknown;}// 1)自定义NSObject子类 2)其他的Foundation类
 }
+
+// 举得还是不能如下这么写死类型，因为可能随着iOS SDK升级这些类名可能会发生变化、以及集成结构也会变化。
+//static xzh_force_inline XZHFoundationType XZHGetObjectFoundationType(id obj) {
+//    if (!obj) {return XZHFoundationTypeNone;}
+//    Class cls = [obj class];
+//    if (cls == objc_getClass("__NSArrayI") || cls == objc_getClass("__NSArray0")) {return XZHFoundationTypeNSArray;}
+//    else if (cls == objc_getClass("__NSArrayM")) {return XZHFoundationTypeNSMutableArray;}
+//    else if (cls == objc_getClass("NSURL")) {return XZHFoundationTypeNSURL;}
+//    else if (cls == objc_getClass("__NSSetI") || cls == objc_getClass("__NSSingleObjectSetI")) {return XZHFoundationTypeNSSet;}
+//    else if (cls == objc_getClass("__NSSetM")) {return XZHFoundationTypeNSMutableSet;}
+//    else if (cls == objc_getClass("__NSDictionary0") || cls == objc_getClass("__NSDictionaryI")) {return XZHFoundationTypeNSDictionary;}
+//    else if (cls == objc_getClass("__NSDictionaryM")) {return XZHFoundationTypeNSMutableDictionary;}
+//    else if (cls == objc_getClass("__NSDate")) {return XZHFoundationTypeNSDate;}
+//    else if (cls == objc_getClass("_NSZeroData") || cls == objc_getClass("NSConcreteData")) {return XZHFoundationTypeNSData;}
+//    else if (cls == objc_getClass("NSConcreteMutableData")) {return XZHFoundationTypeNSMutableData;}
+//    else if (cls == objc_getClass("__NSCFNumber")) {return XZHFoundationTypeNSNumber;}
+//    else if (cls == objc_getClass("NSDecimalNumber")) {return XZHFoundationTypeNSDecimalNumber;}
+//    else if (cls == objc_getClass("__NSCFConstantString") || cls == objc_getClass("NSTaggedPointerString")) {return XZHFoundationTypeNSString;}
+//    else if (cls == objc_getClass("__NSCFString")) {return XZHFoundationTypeNSMutableString;}
+//    else if (cls == objc_getClass("NSConcreteValue")) {return XZHFoundationTypeNSValue;}
+//    else if (cls == objc_getClass("__NSGlobalBlock__") || cls == objc_getClass("__NSMallocBlock__") || cls == objc_getClass("__NSStackBlock__")) {return XZHFoundationTypeNSBlock;}
+//    else if (obj == (id)kCFNull) {return XZHFoundationTypeNSNull;}
+//    else {return XZHFoundationTypeUnKnown;}//未知、自定义类型
+//    return XZHGetFoundationType([obj class]);
+//}
 
 XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
     if (NULL == encodings) {return XZHTypeEncodingsUnKnown;}
@@ -210,7 +238,7 @@ XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
 }
 
 - (NSString *)description {
-    return [NSString stringWithFormat:@"<%@ - %p> ivar = %p, name = %@, type = %@, offset = %ld", [self class], self, _ivar, _name, _type, _offset];
+    return [NSString stringWithFormat:@"<%@ : %p> ivar = %p, name = %@, type = %@, offset = %ld", [self class], self, _ivar, _name, _type, _offset];
 }
 
 - (NSString *)debugDescription {
@@ -233,13 +261,14 @@ XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
         //eg、"Tq,N,V_price"、T@"NSString",C,N,V_name 属性的整串编码字符串
         const char *c_attributes = property_getAttributes(property);
         if (NULL != c_attributes) {_fullEncodingString = [NSString stringWithUTF8String:c_attributes];}
-     
+        
         unsigned int num = 0;
         objc_property_attribute_t *atts = property_copyAttributeList(property, &num);
         
         _typeEncoding = XZHTypeEncodingsUnKnown;
         _foundationType = XZHFoundationTypeNone;
         _isCNumber = NO;
+        _isCanKVC = YES;
         
         for (int i = 0; i < num; i++) {
             objc_property_attribute_t att = atts[i];
@@ -247,7 +276,10 @@ XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
                 case 'T': {
                     _ivarEncodingString = [NSString stringWithUTF8String:att.value];
                     size_t len = strlen(att.value);
-                    if (len < 1) {continue;}
+                    if (len < 1) {
+                        _isCanKVC = NO;
+                        continue;
+                    }
                     char *tmpValue = (char *)malloc(sizeof(char) * len);
                     strcpy(tmpValue, att.value);
                     switch (tmpValue[0]) {
@@ -498,6 +530,7 @@ XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
         if (_getter) {_isGetterAccess = YES;}
         if (_setter && ((XZHTypeEncodingPropertyReadonly != (_typeEncoding & XZHTypeEncodingPropertyMask)))) {_isSetterAccess = YES;}
         else {_isSetterAccess = NO;}
+        if (!_isGetterAccess || !_isSetterAccess) {_isCanKVC = NO;}
         
     }//end init
     
@@ -523,7 +556,7 @@ XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
 }
 
 - (NSString *)description {
-    return [NSString stringWithFormat:@"<%@ - %p> name = %@, getter = %@, setter = %@, cls = %@", [self class], self, _name, NSStringFromSelector(_getter), NSStringFromSelector(_setter), _cls];
+    return [NSString stringWithFormat:@"<%@ : %p> name = %@, getter = %@, setter = %@, cls = %@", [self class], self, _name, NSStringFromSelector(_getter), NSStringFromSelector(_setter), _cls];
 }
 
 - (NSString *)debugDescription {
@@ -548,24 +581,13 @@ XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
         if ([_selString isEqualToString:@".cxx_destruct"]) {
             return nil; //all NSObjects have this method, clutters the dictionary
         }
-        
-        /**
-         *  retrun type encoding
-         *  这里不使用method_getReturnType(method, char *dst, size_t dst_len)，因为需要分配一个固定长度的字符串
-         */
         char *c_returnType = method_copyReturnType(method);
         if (NULL != c_returnType) {
             _returnType = [NSString stringWithUTF8String:c_returnType];
             free(c_returnType);
         }
-        
-        /**
-         *  arguments type encoding
-         *  依次得到每一个参数的type encodings
-         *  第一个参数默认是target >>> id >>> @
-         *  第二个参数默认是_cmd >>> SEL >>> :
-         */
         unsigned int argumentCount = method_getNumberOfArguments(method);
+        _numberOfArguments = argumentCount;
         if (argumentCount > 0) {
             NSMutableArray *types = [[NSMutableArray alloc] initWithCapacity:argumentCount];
             for (unsigned int num = 0; num < argumentCount; num++) {
@@ -578,10 +600,6 @@ XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
             }
             _argumentTypes = [types copy];
         }
-        
-        /**
-         *  method type encoding
-         */
         const char*method_type = method_getTypeEncoding(method);
         _type = [NSString stringWithUTF8String:method_type];
     }
@@ -589,7 +607,7 @@ XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
 }
 
 - (NSString *)description {
-    return [NSString stringWithFormat:@"<%@ - %p> sel = %@， returnType = %@, argumentTypes = %@, type = %@", [self class], self, _selString, _returnType, _argumentTypes, _type];
+    return [NSString stringWithFormat:@"<%@ : %p> sel = %@， returnType = %@, argumentTypes = %@, type = %@", [self class], self, _selString, _returnType, _argumentTypes, _type];
 }
 
 - (NSString *)debugDescription {
@@ -625,6 +643,7 @@ XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
     if (self) {
         _protocol = protocol;
         _name = NSStringFromProtocol(_protocol);
+        _methods = XZHGetMethodListForProtocol(protocol);
     }
     return self;
 }
@@ -656,7 +675,7 @@ XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
 }
 
 - (NSString *)description {
-    return [NSString stringWithFormat:@"<%@ - %p>", [self class], self];
+    return [NSString stringWithFormat:@"<%@ : %p>", [self class], self];
 }
 
 - (NSString *)debugDescription {
@@ -670,7 +689,7 @@ XZHTypeEncoding XZHGetTypeEncoding(const char *encodings) {
 static dispatch_semaphore_t semaphore = NULL;
 @implementation XZHClassModel {
     @package
-    BOOL _isNeedUpdate;
+    BOOL _isNeedUpdate;    //标记是否需要重新解析
 }
 
 + (instancetype)classModelWithClass:(Class)cls {
@@ -719,9 +738,8 @@ static dispatch_semaphore_t semaphore = NULL;
         _isMeta = class_isMetaClass(cls);
         _foundationType = XZHGetFoundationType(cls);
         [self _parse];
-        
-        // super class
         _superCls = class_getSuperclass(cls);
+        if (_superCls == [NSObject class] || _superCls == [NSProxy class]) {return self;}
         _superClassModel = [XZHClassModel classModelWithClass:_superCls];
     }
     return self;
@@ -817,7 +835,7 @@ static dispatch_semaphore_t semaphore = NULL;
 }
 
 - (NSString *)description {
-    return [NSString stringWithFormat:@"<%@-%p>: name = %@, peropertyMap = %@, ivarMap = %@, methodMap = %@, protocolMap = %@", [self class], self, _name, _propertyMap, _ivarMap, _methodMap, _protocolMap];
+    return [NSString stringWithFormat:@"<%@ : %p>: className = %@, peropertyMap = %@, ivarMap = %@, methodMap = %@, protocolMap = %@", [self class], self, _clsName, _propertyMap, _ivarMap, _methodMap, _protocolMap];
 }
 
 - (NSString *)debugDescription {
@@ -834,7 +852,7 @@ static dispatch_semaphore_t semaphore = NULL;
     if (_isMeta != clsModel.isMeta) {return NO;}
     if (_superCls != clsModel.superCls) {return NO;}
     if (_superClassModel != clsModel.superClassModel) {return NO;}
-    if (![_name isEqualToString:clsModel.name]) {return NO;}
+    if (![_clsName isEqualToString:clsModel.clsName]) {return NO;}
     if (_propertyMap.count != clsModel.propertyMap.count) {return NO;}
     if (_ivarMap.count != clsModel.ivarMap.count) {return NO;}
     if (_methodMap.count != clsModel.methodMap.count) {return NO;}
@@ -856,13 +874,79 @@ id XZHGetWeakRefrenceObject(XZHWeakRefrenceBlock block) {
     return (nil != block) ? block() : nil;
 }
 
-/**
- *  只判断类方法是否实现
- */
 BOOL XZHClassRespondsToSelector(Class cls, SEL sel) {
     Class meta = object_getClass(cls);
     if (class_isMetaClass(meta)) {
         return class_respondsToSelector(meta, sel);
     }
     return NO;
+}
+
+static dispatch_semaphore_t parse_protocol_semephore;
+NSArray *XZHGetMethodListForProtocol(Protocol *protocol) {
+    if (!protocol) {return nil;}
+    if (protocol_isEqual(protocol, @protocol(NSObject))) {return nil;}
+    
+    static dispatch_once_t onceToken;
+    static NSMutableDictionary *_cache;
+    dispatch_once(&onceToken, ^{
+        _cache = [NSMutableDictionary new];
+        parse_protocol_semephore = dispatch_semaphore_create(1);
+    });
+    
+    NSMutableArray *methods = nil;
+    dispatch_semaphore_wait(parse_protocol_semephore, DISPATCH_TIME_FOREVER);
+    methods = [_cache objectForKey:NSStringFromProtocol(protocol)];
+    dispatch_semaphore_signal(parse_protocol_semephore);
+    if (methods) {
+        return methods;
+    }
+    
+    methods = [NSMutableArray new];
+    unsigned int count = 0;
+    Protocol *__unsafe_unretained *superProtocols = protocol_copyProtocolList(protocol, &count);
+    if (superProtocols != NULL && count > 0) {
+        for (unsigned int index = 0; index < count; index++) {
+            NSArray * superMethods = XZHGetMethodListForProtocol(superProtocols[index]);
+            if (superMethods) {[methods addObjectsFromArray:superMethods];}
+        }
+        free(superProtocols);
+    }
+    
+    unsigned int optionalCount = 0;
+    struct objc_method_description* optionalMethods = protocol_copyMethodDescriptionList(protocol, NO, YES, &optionalCount);
+    if (optionalMethods != NULL && optionalCount > 0) {
+        for(unsigned i = 0; i < optionalCount; i++) {
+            NSString *methodName = NSStringFromSelector(optionalMethods[i].name);
+            NSString *methodTypes = [NSString stringWithCString:optionalMethods[i].types encoding:[NSString defaultCStringEncoding]];
+            NSDictionary *dic = @{
+                                  kMethodName : ((methodName != nil) ? methodName : @""),
+                                  kMethodType : ((methodTypes != nil) ? methodTypes : @""),
+                                  };
+            [methods addObject:dic];
+        }
+        free(optionalMethods);
+    }
+    
+    unsigned int requiredCount = 0;
+    struct objc_method_description* requiredMethods = protocol_copyMethodDescriptionList(protocol, YES, YES, &requiredCount);
+    if (requiredMethods != NULL && requiredCount > 0) {
+        for(unsigned i = 0; i < requiredCount; i++) {
+            NSString *methodName = NSStringFromSelector(requiredMethods[i].name);
+            NSString *methodTypes = [NSString stringWithCString:requiredMethods[i].types encoding:[NSString defaultCStringEncoding]];
+            NSDictionary *dic = @{
+                                  kMethodName : ((methodName != nil) ? methodName : @""),
+                                  kMethodType : ((methodTypes != nil) ? methodTypes : @""),
+                                  };
+            [methods addObject:dic];
+        }
+        free(requiredMethods);
+    }
+    
+    methods = methods.copy;
+    dispatch_semaphore_wait(parse_protocol_semephore, DISPATCH_TIME_FOREVER);
+    [_cache setObject:methods forKey:NSStringFromProtocol(protocol)];
+    dispatch_semaphore_signal(parse_protocol_semephore);
+    
+    return methods;
 }
